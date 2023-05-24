@@ -7,4 +7,4 @@ The model utilized is a convolutional neural network trained on the MNIST datase
 
 ## Demo
 
-![Demo](demo.gif)
+<img alt="Demo" src="demo.gif"/>
