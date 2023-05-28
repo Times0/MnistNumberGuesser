@@ -1,5 +1,3 @@
-import sys
-
 import PygameUIKit.button as button
 import pygame.sprite
 import torch
@@ -10,15 +8,19 @@ from constants import *
 
 SIZE_PIXEL = 18
 
+RED = (255, 0, 0)
+WHITE = (255, 255, 255)
+LIGHT_BLACK = (40, 44, 52)
+BLACK = (0, 0, 0)
+
 
 class Window:
     def __init__(self, win):
+        self.WIDTH, self.HEIGHT = WIDTH, HEIGHT
         self.game_is_on = True
         self.win = win
         font = pygame.font.SysFont("Montserrat", 30)
         self.clear_btn = button.ButtonText(RED, self.clear, "CLEAR", border_radius=5, font_color=WHITE, font=font)
-        # self.guess_btn = button.ButtonText(BLUE, self.calculate_and_show_prediction, "GUESS", border_radius=5, font_color=WHITE,
-        #                                    font=font)
 
         self.label = Label("Predictions :", font_color=WHITE, font=font)
         self.predictions_labels = []
@@ -30,9 +32,9 @@ class Window:
         self.objs = Group(self.clear_btn)
         self.grid = Grid(28)
 
-        import os
-        # current dir
-        sys.path.append(r"C:\Programmation\Python\Cool Projects\mnist_gui")
+        self.writing = False
+
+        # Model
         self.model = torch.load("model_good.pt")
 
     def run(self):
@@ -49,17 +51,35 @@ class Window:
         for event in events:
             if event.type == pygame.QUIT:
                 self.game_is_on = False
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:
+                    self.writing = True
 
-        if pygame.mouse.get_pressed()[0]:
-            pos = pygame.mouse.get_pos()
-            W, H = self.win.get_size()
-            x_grid = W / 2 - SIZE_PIXEL * self.grid.n / 2 - 100
-            y_grid = H / 2 - SIZE_PIXEL * self.grid.n / 2
-            self.grid.handle_event(pos, x_grid, y_grid)
-            self.calculate_and_show_prediction()
+            if event.type == pygame.MOUSEBUTTONUP:
+                if event.button == 1:
+                    self.writing = False
+                    self.calculate_and_show_prediction()
+
+            if event.type == pygame.MOUSEMOTION:
+                if self.writing:
+                    pos = pygame.mouse.get_pos()
+                    W, H = self.WIDTH, self.HEIGHT
+                    x_grid = W / 2 - SIZE_PIXEL * self.grid.n / 2 - 100
+                    y_grid = H / 2 - SIZE_PIXEL * self.grid.n / 2
+                    self.grid.handle_event(pos, x_grid, y_grid)
+            if event.type == pygame.WINDOWRESIZED:
+                self.WIDTH, self.HEIGHT = self.win.get_size()
+                print(self.WIDTH, self.HEIGHT)
+
+        # if pygame.mouse.get_pressed()[0]:
+        #     pos = pygame.mouse.get_pos()
+        #     W, H = self.win.get_size()
+        #     x_grid = W / 2 - SIZE_PIXEL * self.grid.n / 2 - 100
+        #     y_grid = H / 2 - SIZE_PIXEL * self.grid.n / 2
+        #     self.grid.handle_event(pos, x_grid, y_grid)
 
     def draw(self, win):
-        W, H = win.get_size()
+        W, H = self.WIDTH, self.HEIGHT
         x_grid = W / 2 - SIZE_PIXEL * self.grid.n / 2 - 100
         y_grid = H / 2 - SIZE_PIXEL * self.grid.n / 2
 
@@ -97,6 +117,7 @@ class Window:
 
     def compute_prediction_values(self):
         img = self.create_torch_image()
+        self.model.eval()
         output = self.model(img)
         return output
 
@@ -125,11 +146,11 @@ class Grid:
         if draw_lines:
             # draw horizontal lines
             for i in range(self.n + 1):
-                pygame.draw.line(win, LIGHTBLACK, (x_offset, i * h + y_offset),
+                pygame.draw.line(win, LIGHT_BLACK, (x_offset, i * h + y_offset),
                                  (self.n * w + x_offset, i * h + y_offset))
             # draw vertical lines
             for i in range(self.n + 1):
-                pygame.draw.line(win, LIGHTBLACK, (i * w + x_offset, y_offset),
+                pygame.draw.line(win, LIGHT_BLACK, (i * w + x_offset, y_offset),
                                  (i * w + x_offset, self.n * h + y_offset))
 
     def handle_event(self, pos, x_offset, y_offset):
@@ -143,4 +164,7 @@ class Grid:
         j = y // h
         if 0 <= i < self.n and 0 <= j < self.n:
             i, j = int(i), int(j)
-            self.tab[i][j] = 1
+            for k in range(i - 1, i + 2):
+                for l in range(j - 1, j + 2):
+                    if 0 <= k < self.n and 0 <= l < self.n:
+                        self.tab[k][l] = 1

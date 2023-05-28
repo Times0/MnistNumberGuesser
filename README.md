@@ -8,3 +8,4 @@ The model utilized is a convolutional neural network trained on the MNIST datase
 ## Demo
 
 <img alt="Demo" src="demo.gif"/>
+
