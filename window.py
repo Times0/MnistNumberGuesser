@@ -1,8 +1,13 @@
+import math
+from pprint import pprint
+
 import PygameUIKit.button as button
 import pygame.sprite
 import torch
 from PygameUIKit import Group
 from PygameUIKit.label import Label
+from PygameUIKit.barchart import BarChart
+from pygame import Color
 
 from constants import *
 
@@ -20,16 +25,25 @@ class Window:
         self.game_is_on = True
         self.win = win
         font = pygame.font.SysFont("Montserrat", 30)
-        self.clear_btn = button.ButtonText(RED, self.clear, "CLEAR", border_radius=5, font_color=WHITE, font=font)
+
+        self.prediction_values = [0.1] * 10
+        self.certainty_values = [0] * 10
+
+        self.ui_group = Group()
+        self.clear_btn = button.ButtonText("CLEAR", self.clear, RED, border_radius=5, font_color=Color("white"),
+                                           font=font, ui_group=self.ui_group)
+
+        labels = [str(i) for i in range(10)]
+        certainty = [0] * 10
+        self.bar_chart = BarChart(certainty, labels=labels, ui_group=self.ui_group, max_value=100,
+                                  labels_color=Color("white"))
 
         self.label = Label("Predictions :", font_color=WHITE, font=font)
         self.predictions_labels = []
         for i in range(10):
             text = f"{i} : 0.0"
             self.predictions_labels.append(Label(text, font_color=WHITE, font=font))
-        self.prediction_values = [0.1] * 10
 
-        self.objs = Group(self.clear_btn)
         self.grid = Grid(28)
 
         self.writing = False
@@ -40,17 +54,19 @@ class Window:
     def run(self):
         clock = pygame.time.Clock()
         while self.game_is_on:
-            clock.tick(FPS)
+            dt = clock.tick(FPS) / 1000
             self.win.fill((40, 44, 52))
             self.events()
+            self.update(dt)
             self.draw(self.win)
 
     def events(self):
         events = pygame.event.get()
-        self.objs.handle_events(events)
         for event in events:
             if event.type == pygame.QUIT:
                 self.game_is_on = False
+            self.ui_group.handle_event(event)
+
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
                     self.writing = True
@@ -63,13 +79,12 @@ class Window:
             if event.type == pygame.MOUSEMOTION:
                 if self.writing:
                     pos = pygame.mouse.get_pos()
-                    W, H = self.WIDTH, self.HEIGHT
-                    x_grid = W / 2 - SIZE_PIXEL * self.grid.n / 2 - 100
-                    y_grid = H / 2 - SIZE_PIXEL * self.grid.n / 2
-                    self.grid.handle_event(pos, x_grid, y_grid)
+                    x, y = self.grid.rect.topleft
+                    self.grid.handle_event(pos, x, y)
+                self.calculate_and_show_prediction()
+
             if event.type == pygame.WINDOWRESIZED:
                 self.WIDTH, self.HEIGHT = self.win.get_size()
-                print(self.WIDTH, self.HEIGHT)
 
         # if pygame.mouse.get_pressed()[0]:
         #     pos = pygame.mouse.get_pos()
@@ -78,29 +93,31 @@ class Window:
         #     y_grid = H / 2 - SIZE_PIXEL * self.grid.n / 2
         #     self.grid.handle_event(pos, x_grid, y_grid)
 
+    def update(self, dt):
+        self.ui_group.update(dt)
+
     def draw(self, win):
         W, H = self.WIDTH, self.HEIGHT
-        x_grid = W / 2 - SIZE_PIXEL * self.grid.n / 2 - 100
-        y_grid = H / 2 - SIZE_PIXEL * self.grid.n / 2
+        w_grid = SIZE_PIXEL * self.grid.n
+        h_grid = SIZE_PIXEL * self.grid.n
+        x_grid = W / 2 - w_grid / 2
+        y_grid = (H / 2 - h_grid / 2) * 0.5
 
         self.grid.draw(win, x_grid, y_grid, draw_lines=False)
-        self.clear_btn.draw(win, x_grid - self.clear_btn.rect.width - 10, y_grid + 10)
+        self.clear_btn.draw(win, x_grid - self.clear_btn.rect.width - 50, y_grid + 10)
 
-        self.label.draw(win, W - 300, y_grid + 50)
-        for i in range(len(self.predictions_labels)):
-            self.predictions_labels[i].draw(win, W - 300, y_grid + 50 + (i + 1) * 30)
-
+        # draw the bar chart
+        self.bar_chart.draw(win, x_grid, y_grid + h_grid + 10, w_grid, H - y_grid - h_grid - 50)
         pygame.display.flip()
 
     def update_labels(self):
-        max_pred = max(self.prediction_values)
-        for i in range(len(self.prediction_values)):
-            self.predictions_labels[i].text = f"{i} : {self.prediction_values[i]:.3f}"
-            if self.prediction_values[i] == max_pred and max_pred > 0.5:
-                self.predictions_labels[i].font_color = RED
-            else:
-                self.predictions_labels[i].font_color = WHITE
-            self.predictions_labels[i].render_new_text()
+        pprint(self.prediction_values)
+        max_value = math.exp(max(self.prediction_values))
+
+        for i, value in enumerate(self.prediction_values):
+            self.bar_chart.change_value(i, math.exp(value) * 100 / max_value)
+
+        pprint(self.certainty_values)
 
     def clear(self):
         self.grid = Grid(28)
@@ -122,8 +139,7 @@ class Window:
         return output
 
     def calculate_and_show_prediction(self):
-        vals = self.compute_prediction_values()
-        self.prediction_values = vals[0].tolist()
+        self.prediction_values = self.compute_prediction_values()[0].tolist()
         self.update_labels()
 
 
@@ -131,10 +147,11 @@ class Grid:
     def __init__(self, n):
         self.tab = [[0 for i in range(n)] for j in range(n)]
         self.n = n
+        self.rect = pygame.Rect(0, 0, 0, 0)
 
     def draw(self, win, x_offset, y_offset, draw_lines=True):
         w, h = SIZE_PIXEL, SIZE_PIXEL
-
+        self.rect = pygame.Rect(x_offset, y_offset, w * self.n, h * self.n)
         for i in range(self.n):
             for j in range(self.n):
                 x = i * w
